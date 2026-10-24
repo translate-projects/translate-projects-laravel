@@ -1,89 +1,74 @@
 # Translate Projects – Laravel
 
-Paquete de Laravel para extraer las cadenas de traducción de tu proyecto y traducirlas automáticamente con la API de [Translate Projects](https://translateprojects.dev).
+Traduce los textos de tu app Laravel con [Translate Projects](https://translateprojects.dev). El paquete extrae los textos de `__()`, `trans()` y `@lang()` a `lang/{idioma}.json`, los sube a `api.translateprojects.dev` y escribe los archivos traducidos `lang/en.json`, `lang/pt_BR.json`, etc., que Laravel usa directamente.
 
 ## Requisitos
 
-- PHP >= 8.0
-- Laravel (con `Illuminate\Support\Facades\Http`)
-- Extensión `gmp` de PHP (la usa `HashHelper`)
+- PHP >= 8.1
+- Laravel 10, 11, 12 o 13
 
 ## Instalación
 
 ```bash
 composer require neiderruiz/translate-projects-laravel
-```
-
-El service provider se registra solo (auto-discovery). Al arrancar, si no existe `config/translate-projects.php`, el paquete lo copia automáticamente. También puedes publicarlo a mano:
-
-```bash
-php artisan vendor:publish --tag=translate-config
+php artisan vendor:publish --tag=translate-config   # opcional
 ```
 
 ## Configuración
 
-En tu `.env`:
+En el `.env`:
 
 ```env
 TRANSLATE_PROJECTS_API_KEY=tu_api_key
-TRANSLATE_PROJECTS_DEFAULT_LOCALE=en
+APP_LOCALE=es                                   # idioma de los textos del código
+TRANSLATE_PROJECTS_TARGET_LANGUAGES=en,pt-BR,fr
 ```
 
-En `config/translate-projects.php`:
+| Clave (`config/translate-projects.php`) | Variable de entorno | Por defecto |
+|---|---|---|
+| `api_key` | `TRANSLATE_PROJECTS_API_KEY` | — |
+| `api_url` | `TRANSLATE_PROJECTS_API_URL` | `https://api.translateprojects.dev` |
+| `default_locale` | `TRANSLATE_PROJECTS_DEFAULT_LOCALE` o `APP_LOCALE` | `en` |
+| `target_languages` | `TRANSLATE_PROJECTS_TARGET_LANGUAGES` (separados por coma) | `es,fr,de,it` |
+| `scan_paths` | — | `app`, `resources`, `routes` |
 
-| Clave              | Descripción                                   | Valor por defecto        |
-|--------------------|-----------------------------------------------|--------------------------|
-| `api_key`          | API Key de Translate Projects                 | `null`                   |
-| `default_locale`   | Idioma base de las traducciones               | `en`                     |
-| `target_languages` | Idiomas a los que se traduce                  | `['es', 'fr', 'de', 'it']` |
+`default_locale` debe coincidir con el idioma por defecto del proyecto en Translate Projects. La IA (modelo y API key) se configura en el proyecto, en translateprojects.dev.
 
 ## Uso
 
-### 1. Extraer claves de traducción
+```bash
+php artisan translate:scan        # extrae los textos a lang/es.json
+php artisan translate             # traduce a todos los target_languages
+php artisan translate pt-BR       # solo un idioma
+php artisan translate --force     # vuelve a traducir aunque no haya cambios
+```
+
+- **`translate:scan`** busca `__('...')`, `trans('...')`, `trans_choice('...')` y `@lang('...')` con un texto literal. Añade los textos nuevos a `lang/{idioma base}.json` y conserva los que ya estaban. Omite las claves de grupo (`auth.failed`, si existe `lang/es/auth.php`) y las de paquetes (`pkg::archivo.clave`).
+- **`translate`** sube los textos solo si cambiaron, espera al backend (WebSocket de progreso) y escribe `lang/{idioma}.json`. Conserva las entradas que ya había en ese archivo (por ejemplo, traducciones hechas a mano). Guarda en `lang/.translate-projects.json` qué versión tiene cada idioma: una segunda corrida sin cambios hace una sola petición y no traduce nada.
+
+## Errores
+
+El comando nunca deja un archivo a medias ni lo borra:
+
+- Falta `TRANSLATE_PROJECTS_API_KEY` → falla sin hacer peticiones.
+- Token inválido o error 4xx → muestra el código y el mensaje de la API, y no toca los archivos.
+- Error 429/5xx o de red → reintenta 3 veces. Si sigue fallando, deja ese idioma como estaba y sigue con los demás.
+- Respuesta parcial (por ejemplo, el proyecto no tiene la IA configurada: `MISSING_API_KEY`) → escribe lo que llegó, avisa de cuántos textos faltan y los reintenta en la próxima corrida.
+- Si la IA cambia un `:placeholder`, esa traducción se descarta y Laravel muestra el texto original.
+
+## Limitaciones
+
+- Solo se traducen los archivos JSON (textos usados como clave). Los archivos de grupo `lang/{idioma}/*.php` no se suben.
+- No se detectan las claves dinámicas: `__($variable)`.
+
+## Tests
 
 ```bash
-php artisan translate:scan
+composer install
+composer test
 ```
 
-Recorre los archivos `.php` y `.blade.php` del proyecto buscando llamadas `__('...')` y `@lang('...')`, y genera `lang/{app.locale}/translations.php`:
-
-```php
-<?php
-
-return [
-  'Welcome' => 'Welcome',
-  'Log in' => 'Log in',
-];
-```
-
-### 2. Traducir
-
-```bash
-php artisan translate
-```
-
-Lee `lang/{default_locale}/translations.php`, convierte cada clave en un hash corto (SHA-256 → base36, 15 caracteres) y envía el contenido a `https://translateprojects.dev/translations/load-sources` por cada idioma de `target_languages`.
-
-## Estado actual / limitaciones
-
-- `php artisan translate` **solo sincroniza** las cadenas con la API; el guardado de `lang/{idioma}/translations.php` está comentado en `TranslateCommand`, así que todavía no escribe archivos traducidos.
-- `translate:scan` usa `config('app.locale')` y `translate` usa `translate-projects.default_locale`: ambos deben coincidir.
-- El escaneo recorre todo `base_path()`, incluido `vendor/`, y solo detecta llamadas con un único argumento de cadena literal (no `trans()`, `trans_choice()` ni `__('key', [...])`).
-- `TranslationScanner` (exportar `lang/` a JSON) y varios métodos de `TranslationApi` (`makeTranslations`, `fetchTranslations`, `getTranslations`, `validateChangesFiles`) aún no se usan desde ningún comando.
-
-## Estructura
-
-```
-src/
-├── TranslateProjectsLaravelServiceProvider.php  # Registra comandos y config
-├── TranslationScanner.php                       # Lee lang/*.php y exporta a JSON
-├── Commands/
-│   ├── TranslateScanCommand.php                 # translate:scan
-│   └── TranslateCommand.php                     # translate
-├── Helpers/HashHelper.php                       # Hash corto de claves
-├── Services/TranslationApi.php                  # Cliente HTTP de la API
-└── config/translate-projects.php                # Configuración por defecto
-```
+Los tests usan Orchestra Testbench con la API simulada (`Http::fake`), así que no hacen peticiones de red.
 
 ## Licencia
 

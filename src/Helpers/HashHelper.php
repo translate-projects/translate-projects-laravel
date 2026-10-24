@@ -5,29 +5,30 @@ namespace Neiderruiz\TranslateProjectsLaravel\Helpers;
 class HashHelper
 {
     /**
-     * Convierte un número a Base36
-     */
-    private static function base36Encode(string $hex): string
-    {
-        $decimal = gmp_init($hex, 16);
-        return gmp_strval($decimal, 36);
-    }
-
-    /**
-     * Genera un hash corto de un texto
+     * SHA-256 → Base36, primeros $length caracteres.
+     * Debe coincidir byte a byte con helpers/hash_utils.py del backend.
      */
     public static function generateHashText(string $text, int $length = 15): string
     {
-        // Generar hash SHA-256
-        $hashBinary = hash('sha256', $text, true);
+        // Base36 por división larga sobre los bytes, para no depender de gmp ni bcmath
+        $bytes = array_values(unpack('C*', hash('sha256', $text, true)));
+        $result = '';
 
-        // Convertir a una cadena hexadecimal
-        $hashHex = bin2hex($hashBinary);
+        while ($bytes) {
+            $remainder = 0;
+            $quotient = [];
+            foreach ($bytes as $byte) {
+                $value = ($remainder << 8) | $byte;
+                $digit = intdiv($value, 36);
+                $remainder = $value % 36;
+                if ($quotient || $digit) {
+                    $quotient[] = $digit;
+                }
+            }
+            $result = '0123456789abcdefghijklmnopqrstuvwxyz'[$remainder] . $result;
+            $bytes = $quotient;
+        }
 
-        // Convertir el hash hexadecimal a Base36
-        $base36Hash = self::base36Encode($hashHex);
-
-        // Retornar solo los primeros caracteres del hash
-        return substr($base36Hash, 0, $length);
+        return substr($result ?: '0', 0, $length);
     }
 }

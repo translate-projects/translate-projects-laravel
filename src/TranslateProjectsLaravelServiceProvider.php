@@ -9,26 +9,19 @@ class TranslateProjectsLaravelServiceProvider extends ServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(__DIR__.'/config/translate-projects.php', 'translate-projects');
-        $this->commands([
-            \Neiderruiz\TranslateProjectsLaravel\Commands\TranslateScanCommand::class,
-            \Neiderruiz\TranslateProjectsLaravel\Commands\TranslateCommand::class,
-        ]);
-    
     }
 
     public function boot()
     {
-        $configPath = config_path('translate-projects.php');
-
-        if (!file_exists($configPath)) {
+        if ($this->app->runningInConsole()) {
             $this->publishes([
-                __DIR__.'/config/translate-projects.php' => $configPath,
+                __DIR__.'/config/translate-projects.php' => config_path('translate-projects.php'),
             ], 'translate-config');
-    
-            // Copiar automáticamente si no existe
-            copy(__DIR__.'/config/translate-projects.php', $configPath);
-        }
-    
 
+            $this->commands([
+                Commands\TranslateScanCommand::class,
+                Commands\TranslateCommand::class,
+            ]);
+        }
     }
 }

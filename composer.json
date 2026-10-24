@@ -1,12 +1,16 @@
 {
-    "version": "0.0.1",
     "name": "neiderruiz/translate-projects-laravel",
-    "description": "Translate projects",
+    "description": "Translate your Laravel project with Translate Projects",
     "type": "library",
     "license": "MIT",
     "autoload": {
         "psr-4": {
             "Neiderruiz\\TranslateProjectsLaravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Neiderruiz\\TranslateProjectsLaravel\\Tests\\": "tests/"
         }
     },
     "extra": {
@@ -23,11 +27,18 @@
         }
     ],
     "require": {
-        "php": ">=8.0"
+        "php": ">=8.1",
+        "illuminate/console": "^10.0|^11.0|^12.0|^13.0",
+        "illuminate/http": "^10.0|^11.0|^12.0|^13.0",
+        "illuminate/support": "^10.0|^11.0|^12.0|^13.0",
+        "guzzlehttp/guzzle": "^7.5",
+        "symfony/finder": "^6.0|^7.0|^8.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0|^10.0|^11.0"
     },
     "scripts": {
-        "post-autoload-dump": [
-            "@php -r \"if (file_exists('artisan')) { passthru('php artisan vendor:publish --tag=translate-config --force'); }\""
-        ]
-    }
+        "test": "phpunit"
+    },
+    "minimum-stability": "stable"
 }

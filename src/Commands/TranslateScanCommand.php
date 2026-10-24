@@ -3,82 +3,63 @@
 namespace Neiderruiz\TranslateProjectsLaravel\Commands;
 
 use Illuminate\Console\Command;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use RegexIterator;
-use Illuminate\Support\Facades\File;
+use Symfony\Component\Finder\Finder;
 
 class TranslateScanCommand extends Command
 {
     protected $signature = 'translate:scan';
-    protected $description = 'Escanea el código y extrae todas las claves de traducción usadas con __() o @lang()';
+    protected $description = 'Extrae los textos de __(), trans() y @lang() a lang/{idioma base}.json';
 
-    public function handle()
+    public function handle(): int
     {
-        $this->info('🔍 Escaneando el proyecto en busca de claves de traducción...');
+        $source = TranslateCommand::fileLocale(config('translate-projects.default_locale'));
+        $paths = array_filter(array_map('base_path', (array) config('translate-projects.scan_paths')), 'is_dir');
 
-        $locale = config('app.locale'); // Obtener el idioma predeterminado
-        $langPath = lang_path($locale); // Ruta de la carpeta del idioma
-
-        // Crear la carpeta si no existe
-        if (!File::exists($langPath)) {
-            File::makeDirectory($langPath, 0755, true);
-        }
-
-        $translations = $this->scanProjectForTranslations(base_path());
-
-        if (empty($translations)) {
-            $this->warn('⚠️ No se encontraron claves de traducción.');
-            return;
-        }
-
-        $outputFile = $langPath . '/translations.php';
-        $content = $this->formatArrayToPhpFile($translations);
-
-        File::put($outputFile, $content);
-
-        $this->info('✅ Claves de traducción extraídas con éxito.');
-        $this->info('📂 Archivo generado: ' . $outputFile);
-    }
-
-    /**
-     * Escanea los archivos PHP y Blade para extraer claves de traducción.
-     */
-    private function scanProjectForTranslations($path)
-    {
-        $translations = [];
-
-        $directory = new RecursiveDirectoryIterator($path);
-        $iterator = new RecursiveIteratorIterator($directory);
-        $files = new RegexIterator($iterator, '/\.(php|blade\.php)$/', RegexIterator::MATCH);
-
-        foreach ($files as $file) {
-            $content = file_get_contents($file->getPathname());
-
-            // Buscar __() y @lang()
-            preg_match_all("/__\(['\"](.*?)['\"]\)/", $content, $matches1);
-            preg_match_all("/@lang\(['\"](.*?)['\"]\)/", $content, $matches2);
-
-            $matches = array_merge($matches1[1], $matches2[1]);
-
-            foreach ($matches as $key) {
-                $translations[$key] = $translations[$key] ?? $key;
+        $found = [];
+        if ($paths) {
+            foreach (Finder::create()->files()->in($paths)->name('*.php') as $file) {
+                foreach (self::extract($file->getContents()) as $key) {
+                    // Claves de grupo (auth.failed → lang/es/auth.php) y de paquetes (pkg::file.key) no van al JSON
+                    if ($key === '' || str_contains($key, '::') || is_file(lang_path("$source/" . strtok($key, '.') . '.php'))) {
+                        continue;
+                    }
+                    $found[$key] = $key;
+                }
             }
         }
 
-        return $translations;
+        if (!$found) {
+            $this->warn('⚠️ No se encontraron textos de traducción.');
+            return self::SUCCESS;
+        }
+
+        $file = lang_path("$source.json");
+        $existing = is_file($file) ? json_decode(file_get_contents($file), true) : [];
+        if (!is_array($existing)) {
+            $this->error("❌ $file no es un JSON válido, no se modifica.");
+            return self::FAILURE;
+        }
+
+        // Se conservan los textos existentes (también los que ya no aparecen en el código)
+        $merged = $existing + $found;
+        ksort($merged);
+        if (!is_dir(dirname($file))) {
+            mkdir(dirname($file), 0755, true);
+        }
+        file_put_contents($file, json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+
+        $this->info(sprintf('✅ %d textos (%d nuevos) en %s', count($merged), count($merged) - count($existing), $file));
+        return self::SUCCESS;
     }
 
-    /**
-     * Formatea un array como código PHP con la sintaxis correcta de Laravel.
-     */
-    private function formatArrayToPhpFile(array $translations)
+    /** Devuelve las claves literales de __('...'), trans('...'), trans_choice('...') y @lang('...'). */
+    public static function extract(string $content): array
     {
-        $exportedArray = var_export($translations, true);
+        preg_match_all('/(?:\b__|\btrans|\btrans_choice|@lang)\(\s*(?:\'((?:[^\'\\\\]|\\\\.)*)\'|"((?:[^"\\\\]|\\\\.)*)")\s*[,)]/', $content, $matches, PREG_SET_ORDER);
 
-        // Reemplazar `array(` por `[`, y `)` por `]` para usar la sintaxis moderna de arrays
-        $formattedArray = preg_replace(['/array \(/', '/\)$/'], ['[', ']'], $exportedArray);
-
-        return "<?php\n\nreturn " . $formattedArray . ";\n";
+        return array_map(
+            fn ($m) => isset($m[2]) && $m[2] !== '' ? stripcslashes($m[2]) : str_replace(["\\'", '\\\\'], ["'", '\\'], $m[1]),
+            $matches
+        );
     }
 }
