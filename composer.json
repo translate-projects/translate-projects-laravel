@@ -1,0 +1,33 @@
+{
+    "version": "0.0.1",
+    "name": "neiderruiz/translate-projects-laravel",
+    "description": "Translate projects",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Neiderruiz\\TranslateProjectsLaravel\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Neiderruiz\\TranslateProjectsLaravel\\TranslateProjectsLaravelServiceProvider"
+            ]
+        }
+    },
+    "authors": [
+        {
+            "name": "Neider Ruiz",
+            "email": "neiderbtc@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.0"
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "@php -r \"if (file_exists('artisan')) { passthru('php artisan vendor:publish --tag=translate-config --force'); }\""
+        ]
+    }
+}
