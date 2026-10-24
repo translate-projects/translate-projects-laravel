@@ -2,6 +2,8 @@
 
 Traduce automáticamente los textos de tu app Laravel con [Translate Projects](https://translateprojects.dev).
 
+📖 Documentación: https://doc.translateprojects.dev/docs/php/laravel
+
 El paquete hace tres cosas:
 
 1. Extrae los textos de `__()`, `trans()`, `trans_choice()` y `@lang()` a `lang/{idioma base}.json`.
