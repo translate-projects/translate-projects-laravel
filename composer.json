@@ -1,5 +1,5 @@
 {
-    "name": "neiderruiz/translate-projects-laravel",
+    "name": "translate-projects/laravel",
     "description": "Translate your Laravel project with Translate Projects",
     "type": "library",
     "license": "MIT",

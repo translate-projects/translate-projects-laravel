@@ -22,7 +22,7 @@ El paquete hace tres cosas:
 ## Instalación
 
 ```bash
-composer require neiderruiz/translate-projects-laravel
+composer require translate-projects/laravel
 ```
 
 El service provider se registra solo (auto-discovery de Laravel). Si quieres editar la configuración, publícala (opcional):
